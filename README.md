@@ -14,10 +14,31 @@ Uninstall using:-
 pip uninstall djn-classes-diffsync
 ```
 
-Command line interface ion Windows:-
+Command line interface on Windows:-
 
 ```sh
 python.exe <python-installation-root>\Lib\site-packages\djn\classes\diffsync\__init__.py -h
+
+usage: __init__.py [-h] [-r HOST] [-u USER] [-d REMOTE_DIR] [-i SSH_KEY_FILENAME] [-l LOG_FILE_NAME] [-P PASSWORD] [-p PASSWORD_ENV_VAR_NAME] [-v]
+
+Watch a local directory and efficiently and recursively synchronize text files to a remote Linux directory using compressed, unified diffing.
+
+options:
+  -h, --help            show this help message and exit
+  -r HOST, --host HOST  remote host IP address
+  -u USER, --user USER  username
+  -d REMOTE_DIR, --remote_dir REMOTE_DIR
+                        remote directory (default: ./)
+  -i SSH_KEY_FILENAME, --ssh_key_filename SSH_KEY_FILENAME
+                        SSH key file name (default: <none>)
+  -l LOG_FILE_NAME, --log_file_name LOG_FILE_NAME
+                        log file name (default: <none>)
+  -P PASSWORD, --password PASSWORD
+                        password
+  -p PASSWORD_ENV_VAR_NAME, --password_env_var_name PASSWORD_ENV_VAR_NAME
+                        environment variable containing the password (default: REMOTE_PASSWORD)
+  -v, --verbose         echo log messages to the console
+
 ```
 
 ```python
