@@ -235,7 +235,7 @@ class DiffSyncHandler:
             import difflib
             diff = list(difflib.unified_diff(remote_content, local_content, fromfile=remote_file, tofile=remote_file)) 
 
-            if diff is None:
+            if diff is None or len(diff) == 0:
                 self.log_log(f"Queryg file {self.FMTX} Complete <NA>"  % (remote_file, ))    
                 return None                
             else:
