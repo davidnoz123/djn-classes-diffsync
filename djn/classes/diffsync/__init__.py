@@ -618,6 +618,24 @@ def setup_ssh(remote_host, remote_user, password, key_filename=None, verbose=Fal
     ssh.connect(remote_host, username=remote_user, password=password, key_filename=key_filename) 
     if verbose: print(f"Connecting {remote_user}@{remote_host} Complete")
     return ssh   
+    
+def install_dependencies_on_server(get_ssh_client, verbose=False):
+    # Code to setup software required on remote computer 
+    if verbose: print("Running Remote Installations ...") 
+    command = []
+    command.append("sudo apt install -y patch")         # REQUIRED Linux VMs probably don't come with the 'patch' tool
+    #command.append("sudo apt install -y python3-pip")   # OPTIONAL Linux VMs probably don't come with pip 
+    stderr_s, ssh_client = "", get_ssh_client()
+    try:
+        stdin, stdout, stderr = ssh_client.exec_command(";".join(command))
+        for s in stdout:
+            if verbose: print(s, end="")
+        stderr_s = stderr.read().decode()
+    finally:
+        ssh_client.close()             
+    if stderr_s.find("E: ") > 0:
+        raise Exception(f"Failure running commands on remote server:{stderr_s.encode()}:{command}")            
+    if verbose: print("Running Remote Installations Complete") 
 
 def main():    
     
@@ -677,21 +695,7 @@ def main():
          
     if True:    
         # Code to setup software required on remote computer 
-        if verbose: print("Running Remote Installations ...") 
-        command = []
-        command.append("sudo apt install -y patch")         # REQUIRED Linux VMs probably don't come with the 'patch' tool
-        #command.append("sudo apt install -y python3-pip")   # OPTIONAL Linux VMs probably don't come with pip 
-        stderr_s, ssh_client = "", get_ssh_client()
-        try:
-            stdin, stdout, stderr = ssh_client.exec_command(";".join(command))
-            for s in stdout:
-                if verbose: print(s, end="")
-            stderr_s = stderr.read().decode()
-        finally:
-            ssh_client.close()             
-        if stderr_s.find("E: ") > 0:
-            raise Exception(f"Failure running commands on remote server:{stderr_s.encode()}:{command}")            
-        if verbose: print("Running Remote Installations Complete") 
+        install_dependencies_on_server(get_ssh_client, verbose=verbose)
         
     # Start the watch
     import threading
