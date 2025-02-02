@@ -620,6 +620,7 @@ def main():
     parser.add_argument("-d", "--remote_dir", type=str, default="./" , help="remote directory (default: ./)")
     parser.add_argument("-i", "--ssh_key_filename", type=str, default=None, help="SSH key file name (default: <none>)")
     parser.add_argument("-l", "--log_file_name", type=str, default=None, help="log file name (default: <none>)")
+    parser.add_argument("-P", "--password", type=str, help="password")    
     parser.add_argument("-p", "--password_env_var_name", type=str, default='REMOTE_PASSWORD', help="environment variable containing the password (default: REMOTE_PASSWORD)")
     parser.add_argument('-v', '--verbose', action='store_true', help="echo log messages to the console")
     
@@ -628,7 +629,7 @@ def main():
     # Configuration for remote        
     REMOTE_HOST = args.host
     REMOTE_USER = args.user
-    REMOTE_PASSWORD = os.environ[args.password_env_var_name] # Get the password from an environment variable
+    REMOTE_PASSWORD = os.environ[args.password_env_var_name] if args.password =='' else args.password # Get the password from an environment variable
     REMOTE_DIR = args.remote_dir
 
     # Configuration for local
