@@ -228,7 +228,10 @@ class DiffSyncHandler:
                 remote_content = self._cache_get(remote_file, cksum_and_len)
 
             # Generate the diff  
-            local_content = open(file_path, "r", encoding="utf-8").readlines()
+            try:
+                local_content = open(file_path, "r", encoding="utf-8").readlines()
+            except BaseException as e:
+                raise Exception(f"Failure read local file:{e.__class__}:{e}:'{file_path}'")
             import difflib
             diff = list(difflib.unified_diff(remote_content, local_content, fromfile=remote_file, tofile=remote_file)) 
 
@@ -322,7 +325,7 @@ class DiffSyncHandler:
             self._mp_queue.put(file_path)
             
     @classmethod
-    def start_monitoring(cls, diff_sync_handler, patterns_files_accept=None, patterns_files_ignore=None, is_pattern_glob_otherwise_regex=False):
+    def start_monitoring(cls, diff_sync_handler, patterns_files_accept=None, patterns_files_ignore=None, is_pattern_glob_otherwise_regex=True):
         """Starts monitoring local files and syncing diffs to the remote machine."""
         
         install_and_import("watchdog")
