@@ -331,8 +331,42 @@ class DiffSyncHandler:
         install_and_import("watchdog")
         from watchdog.observers import Observer
         from watchdog.events import PatternMatchingEventHandler, RegexMatchingEventHandler # https://python-watchdog.readthedocs.io/en/stable/api.html#watchdog.events.PatternMatchingEventHandler
-
+        
         x_MatchingEventHandler = PatternMatchingEventHandler if is_pattern_glob_otherwise_regex else RegexMatchingEventHandler
+        
+        import os  
+        is_win = os.name == 'nt'
+        
+        if is_pattern_glob_otherwise_regex:
+            kwargs = dict(case_sensitive=not is_win, patterns=patterns_files_accept, ignore_patterns=patterns_files_ignore)
+        else:
+            kwargs = dict(case_sensitive=not is_win, regexes=patterns_files_accept, ignore_regexes=patterns_files_ignore)        
+        
+        if True:
+            # We want to find all the files that x_MatchingEventHandler will match 
+            # and we want to trigger them all to be handled by diff_sync_handler
+            # to upload the initial versions of the files to the remote server.
+            
+            # We're going to piggy-back on the logic in watchdog so we can avoid duplicating its file matching logic.
+            # To do this we override the super().dispatch method of a single instance 
+            # of x_MatchingEventHandler. Then, we pass all the files in diff_sync_handler.local_dir
+            # to this instance and call diff_sync_handler._mp_queue.put for each file
+            # matching the logic defined by patterns_files_accept, patterns_files_ignore and is_pattern_glob_otherwise_regex
+            import watchdog
+            if not x_MatchingEventHandler.__mro__[1] is watchdog.events.FileSystemEventHandler:
+                raise Exception("not x_MatchingEventHandler.__mro__[1] is watchdog.events.FileSystemEventHandler")
+            class _FileSystemEventHandlerWithOverriddenDispatchFunction(watchdog.events.FileSystemEventHandler):
+                def dispatch(self, event):
+                    diff_sync_handler._mp_queue.put(event.src_path)
+
+            klass = type("x_MatchingEventHandlerWithOverriddenParent", (x_MatchingEventHandler, _FileSystemEventHandlerWithOverriddenDispatchFunction), {})
+            meh = klass(**kwargs)
+            
+            for root, dirs, files in os.walk(diff_sync_handler.local_dir):
+                for filename in files:
+                    src_path = os.path.join(root, filename)
+                    obj = watchdog.events.FileCreatedEvent(src_path)
+                    meh.dispatch(obj)
         
         class MyEventHandler(x_MatchingEventHandler):
             """Forwards file events to DiffSyncHandler."""
@@ -373,14 +407,7 @@ class DiffSyncHandler:
                 self.value, self.exception = False, None
                 
         is_terminating = is_terminating_cls()
-        
-        import os  
-        is_win = os.name == 'nt'
-        
-        if is_pattern_glob_otherwise_regex:
-            kwargs = dict(case_sensitive=not is_win, patterns=patterns_files_accept, ignore_patterns=patterns_files_ignore)
-        else:
-            kwargs = dict(case_sensitive=not is_win, regexes=patterns_files_accept, ignore_regexes=patterns_files_ignore)
+
         import threading        
         t = threading.Thread(target=_f, args=(diff_sync_handler, is_terminating), kwargs=kwargs, daemon=True)
         t.start() 
