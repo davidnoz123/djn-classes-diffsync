@@ -63,7 +63,7 @@ class DiffSyncHandler:
         # Assign locals
         self.ssh_client, self.sftp, self._file_path_2_status, self._remote_file_2_data, self._log_prefix_s, self.cb_log_callback_f = None, None, None, None, None, None
         
-        self.use_gzip, self._log_calls = True, 0
+        self.use_gzipped_patch_files, self._log_calls = True, 0
         
         self.re_BEG_cksum, self.re_patch_not_found = None, None
             
@@ -215,7 +215,7 @@ class DiffSyncHandler:
 
             rel_path = os.path.relpath(file_path, self.local_dir)
             remote_file = os.path.join(self.remote_dir, rel_path).replace("\\", "/")
-            patch_file = os.path.join(self.patch_dir, rel_path.replace('\\', '.').replace('/', '.') + f".patch{'.gz' if self.use_gzip else ''}")    
+            patch_file = os.path.join(self.patch_dir, rel_path.replace('\\', '.').replace('/', '.') + f".patch{'.gz' if self.use_gzipped_patch_files else ''}")    
             
             # Fetch the remote file for comparison
             if self.verbose: self.log_log(f"Queryg file {self.FMTX} ..." % (remote_file, ))
@@ -244,7 +244,7 @@ class DiffSyncHandler:
                 if len(diff) > 0 and not diff[-1].endswith("\n"):
                     diff[-1] += "\n" # patch tool gives the error "**** malformed patch at line xyz" if the patch file doesn't end with a CR
                 os.makedirs(os.path.dirname(patch_file), exist_ok=True)
-                if self.use_gzip:
+                if self.use_gzipped_patch_files:
                     with gzip.open(patch_file, "w") as f: 
                         f.write(("".join(diff)).encode('utf-8'))                        
                 else:
@@ -276,35 +276,46 @@ class DiffSyncHandler:
         try:
             import os            
             
-            # Upload the patch file
-            remote_patch = os.path.join(self.remote_dir, os.path.basename(patch_file))            
-            self.log_log(f"Patchg file {self.FMTX} ..." % (remote_file,))                   
-            self.sftp.put(patch_file, remote_patch)
-            
-            # Process the uploaded patch file
-            command = []
-            if self.use_gzip: command.append(f"gunzip -f {remote_patch}")
-            command.append(f"patch --binary -p0 < {remote_patch[:-3] if self.use_gzip else remote_patch}"   )
-            command.append(f" echo \"BEG_cksum\" ; echo `cksum {remote_file}`")
-            while True:
+            if len(local_content) == 0:
+                # The local file is empty. Truncate it on the server
+                self.log_log(f"Emptyg file {self.FMTX} ..." % (remote_file,))    
+                command = []
+                command.append(f": > {remote_file}")
                 stdin, stdout, stderr = self.ssh_client.exec_command(';'.join(command))
                 stdout_s, stderr_s = stdout.read().decode(), stderr.read().decode()
-                if stderr_s == '':
-                    break
-                self.handle_failure_uaap(command, stderr_s)
-            
-            # Update the local cache
-            if self.re_BEG_cksum is None:
-                import re
-                self.re_BEG_cksum = re.compile("BEG_cksum\n([0-9]+)\s+([0-9]+)\s", re.MULTILINE)            
-            mm = self.re_BEG_cksum.search(stdout_s)
-            if mm is None:
-                #print(f"mm is None:{stdout_s.encode('utf-8')}")
-                pass
+                if stderr_s != '':
+                    raise Exception(f"Failure truncating file:{remote_file}")
             else:
-                #print(f"mm is not None:{stdout_s.encode('utf-8')}")
-                cksum_and_len = mm.groups()  
-                self._cache_set(remote_file, cksum_and_len, local_content)
+                # Upload the patch file                   
+                self.log_log(f"Patchg file {self.FMTX} ..." % (remote_file,))                   
+                remote_patch = os.path.join(self.remote_dir, os.path.basename(patch_file))                         
+                self.sftp.put(patch_file, remote_patch)
+                
+                # Process the uploaded patch file
+                command = []
+                if self.use_gzipped_patch_files: command.append(f"gunzip -f {remote_patch}")
+                command.append(f"patch --binary -p0 < {remote_patch[:-3] if self.use_gzipped_patch_files else remote_patch}")
+                command.append(f" echo \"BEG_cksum\" ; echo `cksum {remote_file}`")
+                
+                while True:
+                    stdin, stdout, stderr = self.ssh_client.exec_command(';'.join(command))
+                    stdout_s, stderr_s = stdout.read().decode(), stderr.read().decode()
+                    if stderr_s == '':
+                        break
+                    self.handle_failure_uaap(command, stderr_s) # We may be able to recover from errors at some point
+                
+                # Update the local cache
+                if self.re_BEG_cksum is None:
+                    import re
+                    self.re_BEG_cksum = re.compile("BEG_cksum\n([0-9]+)\s+([0-9]+)\s", re.MULTILINE)            
+                mm = self.re_BEG_cksum.search(stdout_s)
+                if mm is None:
+                    #print(f"mm is None:{stdout_s.encode('utf-8')}")
+                    pass
+                else:
+                    #print(f"mm is not None:{stdout_s.encode('utf-8')}")
+                    cksum_and_len = mm.groups()  
+                    self._cache_set(remote_file, cksum_and_len, local_content)
             
             self.log_log(f"Patchg file {self.FMTX} Complete" % (remote_file, ))   
         except Exception as e:
