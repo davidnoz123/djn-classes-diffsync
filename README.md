@@ -43,7 +43,7 @@ options:
 
 Command line example on Windows:-
 ```sh
-python.exe <python-installation-root>\Lib\site-packages\djn\classes\diffsync\__init__.py -r 98.76.54.32 -u <username> -P <password> -i C:\key_file.pem -v
+python.exe <python-installation-root>\Lib\site-packages\djn\classes\diffsync\__init__.py -r <ip-address> -u <username> -P <password> -i C:\key_file.pem -v
 ```
 
 Library example:-
@@ -80,3 +80,27 @@ if __name__ == "__main__":
         if diff_sync_handler is not None:
             diff_sync_handler.close()
 ```
+
+## Motivation
+Developing Python code on remote machines can be cumbersome due the lag as the local source changes are uploaded to the server and the interpreter starts up and runs your code.
+Of course, this can be an issue for remote development in any language.
+This tool provides an alternative to using, say, VSCode, PyCharm or MobaXterm for remote development.
+The idea is to set the tool running and edit your local files as usual.
+Then in an SSH window with a Python interpreter running, you run the following command for Python to load and run your latest code.
+```sh
+>>> import runpy ; temp = runpy._run_module_as_main("your_module")
+```
+
+When you have run the command once, then it is just a matter of typing Up Arrow and Enter.
+
+
+This approach can be easily extended to load changes to mulitple Python files at once before re-running your program (using `importlib.reload(your_other_module)`).
+
+
+A word of caution about this approach is that the interpreter is not restarted between runs and care is sometimes needed to avoid confusing results when running complex code configurations.
+
+
+## Feedback
+Have questions or suggestions? [Open an issue](https://github.com/davidnoz123/djn-classes-diffsync/issues).
+
+
