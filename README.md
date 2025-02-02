@@ -100,7 +100,7 @@ When you have run the command once, then it is just a matter of typing Up Arrow 
 This approach can be easily extended to load changes to mulitple Python files at once before re-running your program (using `importlib.reload(your_other_module)`).
 
 
-A word of caution about this approach is that the interpreter is not restarted between runs and care is sometimes needed to avoid confusing results when running complex code configurations.
+A word of caution about an approach using `runpy._run_module_as_main` is that the interpreter is not restarted between runs and care is sometimes needed to avoid confusing results when running complex code configurations.
 
 
 ## ToDo
