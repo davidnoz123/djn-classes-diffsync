@@ -326,7 +326,7 @@ class DiffSyncHandler:
             
     @classmethod
     def start_monitoring(cls, diff_sync_handler, patterns_files_accept=None, patterns_files_ignore=None, is_pattern_glob_otherwise_regex=True):
-        """Starts monitoring local files and syncing diffs to the remote machine."""
+        """Starts monitoring local files and syncing diffs to the remote machine using the given instance diff_sync_handler."""
         
         install_and_import("watchdog")
         from watchdog.observers import Observer
@@ -344,10 +344,10 @@ class DiffSyncHandler:
         
         if True:
             # We want to find all the files that x_MatchingEventHandler will match 
-            # and we want to trigger them all to be handled by diff_sync_handler
-            # to upload the initial versions of the files to the remote server.
+            # and we want to trigger them all to be handled by diff_sync_handler so 
+            # we can upload the initial versions of the files to the remote server.
             
-            # We're going to piggy-back on the logic in watchdog so we can avoid duplicating its file matching logic.
+            # We're going to piggy-back on the code in watchdog so we can avoid duplicating its file matching logic.
             # To do this we override the super().dispatch method of a single instance 
             # of x_MatchingEventHandler. Then, we pass all the files in diff_sync_handler.local_dir
             # to this instance and call diff_sync_handler._mp_queue.put for each file
@@ -357,11 +357,13 @@ class DiffSyncHandler:
                 raise Exception("not x_MatchingEventHandler.__mro__[1] is watchdog.events.FileSystemEventHandler")
             class _FileSystemEventHandlerWithOverriddenDispatchFunction(watchdog.events.FileSystemEventHandler):
                 def dispatch(self, event):
+                    # Add the matched file to the queue
                     diff_sync_handler._mp_queue.put(event.src_path)
 
             klass = type("x_MatchingEventHandlerWithOverriddenParent", (x_MatchingEventHandler, _FileSystemEventHandlerWithOverriddenDispatchFunction), {})
             meh = klass(**kwargs)
             
+            # Scan diff_sync_handler.local_dir looking for matched files
             for root, dirs, files in os.walk(diff_sync_handler.local_dir):
                 for filename in files:
                     src_path = os.path.join(root, filename)
