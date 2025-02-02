@@ -15,3 +15,20 @@ pip uninstall djn-classes-diffsync
 ```
 
 
+```python
+if __name__ == "__main__":        
+    
+    import os, tempfile, importlib, functools    
+    import djn.classes.diffsync as diffsync
+    
+    remote_host, remote_user, password, key_filename, verbose = "<ip-address>", "<username>", "<key-file-password>", r"C:\key-file.pem", True
+
+    get_ssh_client = functools.partial(diffsync.setup_ssh, remote_host, remote_user, password, key_filename=key_filename, verbose=verbose)   
+
+    LOCAL_DIR, PATCH_DIR, REMOTE_DIR = os.getcwd(), os.path.join(tempfile.gettempdir(), "diff_sync_patches"), "./"
+
+    diff_sync_handler = diffsync.DiffSyncHandler(get_ssh_client, LOCAL_DIR, REMOTE_DIR, PATCH_DIR, verbose=verbose)
+    t, is_terminating = diffsync.DiffSyncHandler.start_monitoring(diff_sync_handler, patterns_files_accept=["*.py"])
+    while t.is_alive():
+        t.join(0.01) 
+```
