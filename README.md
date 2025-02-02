@@ -41,6 +41,13 @@ options:
 
 ```
 
+Command line example on Windows:-
+```sh
+python.exe <python-installation-root>\Lib\site-packages\djn\classes\diffsync\__init__.py -r 98.76.54.32 -u <usernmae> -P <password> -i C:\key_file.pem -v
+```
+
+Library example:-
+
 ```python
 if __name__ == "__main__":        
     
