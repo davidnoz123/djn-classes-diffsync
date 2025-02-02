@@ -80,6 +80,7 @@ if __name__ == "__main__":
         if diff_sync_handler is not None:
             diff_sync_handler.close()
 ```
+**NOTE**: The tool requires the Unix utility 'patch' to be installed on the server. This is installed automatically in the command line version of the code. See `def install_dependencies_on_server(get_ssh_client, verbose=False)` in `__init__.py` for details.
 
 ## Motivation
 Developing Python code on remote machines can be cumbersome due the lag as the local source changes are uploaded to the server and the interpreter starts up and runs your code.
