@@ -14,6 +14,11 @@ Uninstall using:-
 pip uninstall djn-classes-diffsync
 ```
 
+Command line interface ion Windows:-
+
+```sh
+python.exe <python-installation-root>\Lib\site-packages\djn\classes\diffsync\__init__.py -h
+```
 
 ```python
 if __name__ == "__main__":        
