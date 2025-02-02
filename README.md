@@ -27,8 +27,20 @@ if __name__ == "__main__":
 
     LOCAL_DIR, PATCH_DIR, REMOTE_DIR = os.getcwd(), os.path.join(tempfile.gettempdir(), "diff_sync_patches"), "./"
 
-    diff_sync_handler = diffsync.DiffSyncHandler(get_ssh_client, LOCAL_DIR, REMOTE_DIR, PATCH_DIR, verbose=verbose)
-    t, is_terminating = diffsync.DiffSyncHandler.start_monitoring(diff_sync_handler, patterns_files_accept=["*.py"])
-    while t.is_alive():
-        t.join(0.01) 
+    print("Ctrl-C to terminate")
+    
+    diff_sync_handler, is_terminating = None, None       
+    try:
+        diff_sync_handler = diffsync.DiffSyncHandler(get_ssh_client, LOCAL_DIR, REMOTE_DIR, PATCH_DIR, verbose=verbose)
+        t, is_terminating = diffsync.DiffSyncHandler.start_monitoring(diff_sync_handler, patterns_files_accept=["*.py"])
+        while t.is_alive():
+            t.join(0.01) 
+    finally:
+        # Clean up to avoid screeds of messages from multiprocessing etc.
+        if is_terminating is not None:
+            is_terminating.value = True
+            while t.is_alive(): 
+                t.join(0.01)
+        if diff_sync_handler is not None:
+            diff_sync_handler.close()
 ```
