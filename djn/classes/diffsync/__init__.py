@@ -317,7 +317,7 @@ class DiffSyncHandler:
                     cksum_and_len = mm.groups()  
                     self._cache_set(remote_file, cksum_and_len, local_content)
             
-            self.log_log(f"Patchg file {self.FMTX} Complete" % (remote_file, ))   
+            self.log_log(f"Patchg file {self.FMTX} Complete" % (remote_file, )) # See 2025_02_03_11_19
         except Exception as e:
             import io, traceback
             file = io.StringIO()
@@ -429,6 +429,7 @@ class DiffSyncHandler:
         
     @classmethod    
     def start_debug_testing_modifys(cls, local_dir, _is_terminating, _lck):
+        # Testing code
         
         def _ff():
             import time, random
@@ -493,6 +494,7 @@ class DiffSyncHandler:
 
                 print(f"Modified file saved as: {output_path}")                        
             
+            import os
             wd = os.path.join(local_dir, "start_debug_testing_modifys_tmp", *[fake.word() for i in range(rnd.randint(1, 5))])
             if os.path.isdir(wd):
                 try:
@@ -533,11 +535,12 @@ class DiffSyncHandler:
         
     @classmethod    
     def start_debug_testing_monitor(cls, local_dir, _is_terminating, _lck, remote_dir, work_dir, get_ssh_client, log_file_name):
+        # Testing code
         
         def _ff():
-            import time, re, uuid, difflib
+            import time, re, uuid, difflib, os
             
-            re_match_patch_complete = re.compile("Patchg file\s+(.*)\s+Complete")
+            re_match_patch_complete = re.compile("Patchg file\s+(.*)\s+Complete") # See 2025_02_03_11_19
             ssh_client, fd = None, None
             skip_delete = False
             try:
@@ -552,36 +555,45 @@ class DiffSyncHandler:
                         ss = fd.read(bb - curr_len + 1)
                         curr_len = bb
                         with _lck:
-                            print('Checking ...')
                             for m in re_match_patch_complete.finditer(ss):
-                                if _is_terminating.value: break
-                                remote_file = os.path.join(remote_dir, m.groups()[0].strip())
-                                temp_file = os.path.join(work_dir, f"{uuid.uuid4().hex}.dbg")
-                                try:
+                                remote_file = os.path.join(remote_dir, m.groups()[0].strip())                                
+                                print(f"Checking '{remote_file}' ...")                                
+                                while True:
+                                    if _is_terminating.value: break
+                                    temp_file = os.path.join(work_dir, f"{uuid.uuid4().hex}.dbg")
                                     try:
-                                        sftp.get(remote_file, temp_file)
-                                    except BaseException as e:
-                                        print(f"Faliure running sftp.get(remote_file, temp_file):{e.__class__}:{e}:'{remote_file}':'{temp_file}'")
-                                        raise
-                                    locl_file = os.path.abspath(os.path.join(local_dir, remote_file))
-                                    with open(temp_file, "r") as ff:
-                                        temp_line = ff.readlines()
-                                    with open(locl_file, "r") as ff:
-                                        locl_line= ff.readlines()                                    
-                                    diff = list(difflib.ndiff(temp_line, locl_line))
-                                    
-                                    recs_pl = [x[2:] for x in diff if x.startswith('+ ')]
-                                    recs_mn = [x[2:] for x in diff if x.startswith('- ')]
-                                    print(recs_pl)
-                                    print(recs_mn)
-                                    if False:
-                                        print(f"fcompare {temp_file} {locl_file}")
-                                        _is_terminating.value = True
-                                        skip_delete = True
-                                finally:
-                                    if not skip_delete and os.path.exists(temp_file):
-                                        os.remove(temp_file)
-                            print('Checking Complete')
+                                        try:
+                                            sftp.get(remote_file, temp_file)
+                                        except BaseException as e:
+                                            print(f"Failure running sftp.get(remote_file, temp_file):{e.__class__}:{e}:'{remote_file}':'{temp_file}'")
+                                            raise
+                                        locl_file = os.path.abspath(os.path.join(local_dir, remote_file))
+                                        with open(temp_file, "r") as ff:
+                                            temp_line = ff.readlines()
+                                        with open(locl_file, "r") as ff:
+                                            locl_line= ff.readlines()                                    
+                                        print(f"Checking '{remote_file}' {sum(map(len, temp_line))} {sum(map(len, locl_line))} ...")
+                                        diff = list(difflib.ndiff(temp_line, locl_line))
+                                        
+                                        recs_pl = [x[2:] for x in diff if x.startswith('+ ')]
+                                        recs_mn = [x[2:] for x in diff if x.startswith('- ')]
+                                        if len(recs_pl) == 0 and len(recs_mn) == 0:
+                                            break
+                                        else:
+                                            if len(recs_pl) == 1 and len(recs_mn) == 1:
+                                                if {recs_pl[0], recs_mn[0], temp_line[-1], locl_line[-1]} == {recs_pl[0], recs_mn[0]}:
+                                                    break
+                                            print(f"Checking '{remote_file}' WARNING **rechecking** ...")
+                                            print(f"Checking '{remote_file}' {recs_pl} {temp_line[-1]} ...")
+                                            print(f"Checking '{remote_file}' {recs_mn} {locl_line[-1]} ...")
+                                            if False:
+                                                print(f"fcompare {temp_file} {locl_file}")
+                                                _is_terminating.value = True
+                                                skip_delete = True
+                                    finally:
+                                        if not skip_delete and os.path.exists(temp_file):
+                                            os.remove(temp_file)
+                                print(f"Checking '{remote_file}' Complete")
             except BaseException as e:
                 import io, traceback
                 file = io.StringIO()
