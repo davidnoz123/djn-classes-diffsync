@@ -18,13 +18,16 @@ pip uninstall djn-classes-diffsync
 ```python
 if __name__ == "__main__":        
     
-    import os, tempfile, importlib, functools    
+    import os, tempfile, functools    
     import djn.classes.diffsync as diffsync
-    
+
+    # Configure the connection
     remote_host, remote_user, password, key_filename, verbose = "<ip-address>", "<username>", "<key-file-password>", r"C:\key-file.pem", True
 
+    # Create a parameterless function we can pass to the multiprocessing pool functions to create the SSH clients
     get_ssh_client = functools.partial(diffsync.setup_ssh, remote_host, remote_user, password, key_filename=key_filename, verbose=verbose)   
 
+    # Point to the target directories
     LOCAL_DIR, PATCH_DIR, REMOTE_DIR = os.getcwd(), os.path.join(tempfile.gettempdir(), "diff_sync_patches"), "./"
 
     print("Ctrl-C to terminate")
