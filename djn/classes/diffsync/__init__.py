@@ -4,12 +4,12 @@ r"""
 
 C:\analytics\projects\git\lexi\demos\venv\Scripts\python.exe
 
-import runpy ; temp = runpy._run_module_as_main("diff_sync")
+import runpy ; temp = runpy._run_module_as_main("__init__")
 
 """
 
 
-def install_and_import(module_name, pip_name=None, break_system_packages=False):
+def install_and_import(module_name, pip_name=None, user_install_otherwise_global=True, break_system_packages=False):
     """Attempts to import a module by string name and if it fails because there is no module by the name, then it attempts an install and another import."""
     import importlib, subprocess, sys, time
     mod = None
@@ -25,8 +25,9 @@ def install_and_import(module_name, pip_name=None, break_system_packages=False):
         # Run the pip install
         cmds = [sys.executable, "-m", "pip", "install"]
         if break_system_packages: 
-                cmds.append("--break-system-packages") # error "externally-managed-environment" occurs when you try to install or modify Python packages using pip in a system-managed Python environment. This is common on Google Cloud virtual machines (VMs), especially those using Debian 12 (Bookworm) or Ubuntu 22.04+, where Python is managed by the system
-                cmds.append("--user")                 
+            cmds.append("--break-system-packages") # error "externally-managed-environment" occurs when you try to install or modify Python packages using pip in a system-managed Python environment. This is common on Google Cloud virtual machines (VMs), especially those using Debian 12 (Bookworm) or Ubuntu 22.04+, where Python is managed by the system
+        if user_install_otherwise_global:
+            cmds.append("--user")                 
         subprocess.check_call(cmds + [pip_name or module_name])
         
         # It can happen that importlib.import_module does not work immediately .. handle this case
@@ -55,6 +56,7 @@ class DiffSyncHandler:
 
     def __init__(self, get_ssh_client, local_dir, remote_dir, patch_dir, cb_log_callback=None, verbose=False, mp_pool_size=8, max_file_locks=48):
         
+        import os
         # Get arg refs
         self.get_ssh_client, self.local_dir, self.remote_dir, self.patch_dir, self.verbose, self.cb_log_callback = get_ssh_client, os.path.abspath(local_dir), remote_dir, os.path.abspath(patch_dir), verbose, cb_log_callback        
         
@@ -369,6 +371,7 @@ class DiffSyncHandler:
                 
         is_terminating = is_terminating_cls()
         
+        import os  
         is_win = os.name == 'nt'
         
         if is_pattern_glob_otherwise_regex:
@@ -388,7 +391,7 @@ class DiffSyncHandler:
             import time, random
             rnd = random.Random(25)
             
-            faker = install_and_import('faker', break_system_packages=False)
+            faker = install_and_import('faker')
             
             fake = faker.Faker()
             fake.seed_instance(42)
@@ -552,77 +555,87 @@ class DiffSyncHandler:
         t.start()
             
         
-def setup_ssh(remote_host, remote_user, password, key_filename=None):
-    print(f"Connecting {remote_user}@{remote_host} ...")
+def setup_ssh(remote_host, remote_user, password, key_filename=None, verbose=False):
+    if verbose: print(f"Connecting {remote_user}@{remote_host} ...")
     paramiko = install_and_import("paramiko")
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
     ssh.connect(remote_host, username=remote_user, password=password, key_filename=key_filename) 
-    print(f"Connecting {remote_user}@{remote_host} Complete")
-    return ssh        
+    if verbose: print(f"Connecting {remote_user}@{remote_host} Complete")
+    return ssh   
 
-if __name__ == "__main__":
+def main():    
     
-    # Linux VMs sometimes need break_system_packages = True i.e.,  error "externally-managed-environment" occurs when you try to install or modify Python packages using pip in a system-managed Python environment
+    
     import os, tempfile, re, functools, argparse
-    install_and_import = functools.partial(install_and_import, break_system_packages=True) 
-    
-    # Configuration for remote
-    parser = argparse.ArgumentParser(description="Process a text file with random modifications.")
+
+    parser = argparse.ArgumentParser(description="Watch a local directory and efficiently and recursively synchronize text files to a remote Linux directory using compressed, unified diffing.")
 
     # Add arguments with default values
-    parser.add_argument("-r", "--host", type=str, default="0.0.0.0", help="remote host (default: 0.0.0.0 i.e., invalid)")
-    parser.add_argument("-u", "--user", type=str, default="quest", help="user name (default: quest)")
+    parser.add_argument("-r", "--host", type=str, help="remote host IP address")
+    parser.add_argument("-u", "--user", type=str, help="username")
     parser.add_argument("-d", "--remote_dir", type=str, default="./" , help="remote directory (default: ./)")
     parser.add_argument("-i", "--ssh_key_filename", type=str, default=None, help="SSH key file name (default: <none>)")
     parser.add_argument("-l", "--log_file_name", type=str, default=None, help="log file name (default: <none>)")
-    
-    kwargs = dict(verbose=True, mp_pool_size=8, max_file_locks=48) # Todo : Hook these to the argparse
+    parser.add_argument("-p", "--password_env_var_name", type=str, default='REMOTE_PASSWORD', help="environment variable containing the password (default: REMOTE_PASSWORD)")
+    parser.add_argument('-v', '--verbose', action='store_true', help="echo log messages to the console")
     
     args = parser.parse_args()
-    
+
+    # Configuration for remote        
     REMOTE_HOST = args.host
     REMOTE_USER = args.user
-    REMOTE_PASSWORD = os.environ['REMOTE_PASSWORD']
+    REMOTE_PASSWORD = os.environ[args.password_env_var_name] # Get the password from an environment variable
     REMOTE_DIR = args.remote_dir
-    key_filename = args.ssh_key_filename 
-    cb_log_callback = args.log_file_name #"xxlog.txt"    
-        
-    if False:
-        REMOTE_HOST = '34.70.13.77'
-        REMOTE_USER = 'g1davidnoz'
-        key_filename = r"C:\analytics\projects\git\lunk\g1davidnoz-01.pem"
-        cb_log_callback = "xxlog.txt"    
-        # ssh g1davidnoz@34.70.13.77  -i C:\analytics\projects\git\lunk\g1davidnoz-01.pem      
-    
+
     # Configuration for local
-    LOCAL_DIR = os.getcwd()
+    verbose = args.verbose    
+    LOCAL_DIR = os.getcwd() # Use the working directory
     PATCH_DIR = os.path.join(tempfile.gettempdir(), "diff_sync_patches")  # To store patch files before upload
     patterns_files_ignore = None     
     patterns_files_accept = ["*.py"]
     #patterns_files_accept = [".*\.py"]    
-    is_pattern_glob_otherwise_regex = True
+    is_pattern_glob_otherwise_regex = True    
+    key_filename = args.ssh_key_filename 
+    cb_log_callback = args.log_file_name    
+        
+    if False:
+        REMOTE_HOST = '34.59.56.98'
+        REMOTE_USER = 'g1davidnoz'
+        LOCAL_DIR = r"C:\analytics\projects\fl\git"
+        key_filename = r"C:\analytics\projects\git\lunk\g1davidnoz-01.pem"
+        cb_log_callback = "xxlog.txt"    
+        # ssh g1davidnoz@34.59.56.98  -i C:\analytics\projects\git\lunk\g1davidnoz-01.pem     
+
+
+    kwargs = dict(verbose=verbose, mp_pool_size=8, max_file_locks=48) # Todo : Hook these to the argparse    
+    
+    global install_and_import
+    install_and_import = functools.partial(install_and_import)         
     
     # Make sure paramiko is installed
     install_and_import("paramiko")    
     
     # Create a function we can pass around to create the ssh_client
-    get_ssh_client = functools.partial(setup_ssh, REMOTE_HOST, REMOTE_USER, REMOTE_PASSWORD, key_filename=key_filename)      
+    get_ssh_client = functools.partial(setup_ssh, REMOTE_HOST, REMOTE_USER, REMOTE_PASSWORD, key_filename=key_filename, verbose=verbose)      
          
     if True:    
         # Code to setup software required on remote computer 
-        print("Running Remote Installations ...") 
+        if verbose: print("Running Remote Installations ...") 
         command = []
-        command.append("sudo apt install -y patch")         # REQUIRED Linux VMs probably don't come with the patch tool
-        command.append("sudo apt install -y python3-pip")   # OPTIONAL Linux VMs probably don't come with pip 
-        ssh_client = get_ssh_client()
+        command.append("sudo apt install -y patch")         # REQUIRED Linux VMs probably don't come with the 'patch' tool
+        #command.append("sudo apt install -y python3-pip")   # OPTIONAL Linux VMs probably don't come with pip 
+        stderr_s, ssh_client = "", get_ssh_client()
         try:
             stdin, stdout, stderr = ssh_client.exec_command(";".join(command))
             for s in stdout:
-                print(s, end="")
+                if verbose: print(s, end="")
+            stderr_s = stderr.read().decode()
         finally:
             ssh_client.close()             
-        print("Running Remote Installations Complete") 
+        if stderr_s.find("E: ") > 0:
+            raise Exception(f"Failure running commands on remote server:{stderr_s.encode()}:{command}")            
+        if verbose: print("Running Remote Installations Complete") 
         
     # Start the watch
     import threading
@@ -644,3 +657,8 @@ if __name__ == "__main__":
                 t.join(0.01)
             if diff_sync_handler is not None:
                 diff_sync_handler.close()
+                
+if __name__ == "__main__":
+    
+    main()
+    
