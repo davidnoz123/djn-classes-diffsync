@@ -1,4 +1,4 @@
 # djn-classes-diffsync
-A multithreaded C tool for doing backups of modified files from a source directory to a destination directory. Does not delete files in the destination directory. Does not overwrite destination files updated after the source file. Modular C code that runs only on Windows using a minimal set of Windows API functions.
+A Python class to watch a local directory and efficiently synchronize text files to a remote Linux directory using compressed, unified diffing. File change events are queued into a multiprocessing pool for faster processing time.
 
 See latest branch '0.1' for current details.
