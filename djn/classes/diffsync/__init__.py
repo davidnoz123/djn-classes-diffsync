@@ -288,7 +288,7 @@ class DiffSyncHandler:
             else:
                 # Upload the patch file                   
                 self.log_log(f"Patchg file {self.FMTX} ..." % (remote_file,))                   
-                remote_patch = os.path.join(self.remote_dir, os.path.basename(patch_file))                         
+                remote_patch = os.path.join(self.remote_dir, os.path.basename(patch_file)).replace('\\', '/')                         
                 self.sftp.put(patch_file, remote_patch)
                 
                 # Process the uploaded patch file
@@ -389,6 +389,7 @@ class DiffSyncHandler:
                 self._diff_sync_handler = _diff_sync_handler
 
             def on_modified(self, event):
+                print(f"on_modified:{event}")
                 if not event.is_directory:
                     self._diff_sync_handler.process_event(event.src_path)
 
@@ -610,12 +611,12 @@ class DiffSyncHandler:
         t.start()
             
         
-def setup_ssh(remote_host, remote_user, password, key_filename=None, verbose=False):
+def setup_ssh(remote_host, remote_user, password, port=22, key_filename=None, verbose=False):
     if verbose: print(f"Connecting {remote_user}@{remote_host} ...")
     paramiko = install_and_import("paramiko")
     ssh = paramiko.SSHClient()
     ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(remote_host, username=remote_user, password=password, key_filename=key_filename) 
+    ssh.connect(remote_host, port=port, username=remote_user, password=password, key_filename=key_filename) 
     if verbose: print(f"Connecting {remote_user}@{remote_host} Complete")
     return ssh   
     
