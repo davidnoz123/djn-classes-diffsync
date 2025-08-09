@@ -414,7 +414,7 @@ class DiffSyncHandler:
                 self._diff_sync_handler = _diff_sync_handler
 
             def on_modified(self, event):
-                print(f"on_modified:{event}")
+                #print(f"on_modified:{event}")
                 if not event.is_directory:
                     self._diff_sync_handler.process_event(event.src_path)
 
