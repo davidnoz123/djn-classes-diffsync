@@ -74,33 +74,42 @@ class DiffSyncHandler:
             open(self.cb_log_callback, "w").close()
         
         import multiprocessing
-        _mp_manager = multiprocessing.Manager()
+        mp_manager = multiprocessing.Manager()
         
         # Create a list of locks that we will use to protect one or more files from being processed at once.
         # Note that we must create these locks up front before we start running. They can't be created dynamically inside the subprocesses.
         # Note that in the case where large numbers of files being processed at once, the larger max_file_locks is, the less blocking there will be.
-        file_path_2_lock_spare_locks_pos = _mp_manager.list() # Use a list to store the integer value
+        file_path_2_lock_spare_locks_pos = mp_manager.list() # Use a list to store the integer value
         file_path_2_lock_spare_locks_pos.append(-1) # Ready to increment for the first time
         
-        file_path_2_lock_spare_locks = _mp_manager.list()        
+        file_path_2_lock_spare_locks = mp_manager.list()        
         for k in range(max_file_locks):
-            file_path_2_lock_spare_locks.append(_mp_manager.Lock())
+            file_path_2_lock_spare_locks.append(mp_manager.Lock())
+
+        mp_lock, remote_file_2_data, file_path_2_lock = mp_manager.Lock(), mp_manager.dict(), mp_manager.dict()
+        unprocess_files_lst, unprocess_files_lck, unprocess_files_evt = mp_manager.list(), mp_manager.Lock(), mp_manager.Event()
         
-        _mp_queue = multiprocessing.Queue()        
-        _mp_pool = multiprocessing.Pool(mp_pool_size, self._run_mp_queue, (_mp_queue, _mp_manager.Lock(), _mp_manager.dict(), _mp_manager.dict(), file_path_2_lock_spare_locks, file_path_2_lock_spare_locks_pos))        
+        mp_queue = multiprocessing.Queue()        
         
-        self._mp_queue, self._mp_pool, self._mp_manager = _mp_queue, _mp_pool, _mp_manager
+        _run_mp_queue_args = (mp_queue, mp_lock, remote_file_2_data, file_path_2_lock, file_path_2_lock_spare_locks, file_path_2_lock_spare_locks_pos, unprocess_files_lst, unprocess_files_lck, unprocess_files_evt) # 2025_08_09_21_45
+        mp_pool = multiprocessing.Pool(mp_pool_size, self._run_mp_queue, _run_mp_queue_args)        
+        
+        self._mp_queue, self._mp_pool, self._mp_manager = mp_queue, mp_pool, mp_manager
+        self._unprocess_files_lst, self._unprocess_files_lck, self._unprocess_files_evt = unprocess_files_lst, unprocess_files_lck, unprocess_files_evt
+        
+        import threading
+        self.process_event_lck = threading.Lock()
         
         self._file_path_2_status = dict() # The objects running self._run_mp_queue don't need this
          
-    def _run_mp_queue(self, mp_queue, mp_lock, remote_file_2_data, file_path_2_lock, file_path_2_lock_spare_locks, file_path_2_lock_spare_locks_pos):
+    def _run_mp_queue(self, mp_queue, mp_lock, remote_file_2_data, file_path_2_lock, file_path_2_lock_spare_locks, file_path_2_lock_spare_locks_pos, unprocess_files_lst, unprocess_files_lck, unprocess_files_evt): # 2025_08_09_21_45
         self.mp_lock, self._remote_file_2_data = mp_lock, remote_file_2_data
         self.ssh_client = self.get_ssh_client()
         self.sftp = self.ssh_client.open_sftp()         
         try:
             # Continue running while the _mp_pool is not closed
             while True:
-                file_path = mp_queue.get(True)   
+                file_path = mp_queue.get(True) # 2025_08_09_21_37
                 # Get the lock we'll use to protect this file from being processed simultaneously by two or more subprocesses.
                 with self.mp_lock:
                     if file_path not in file_path_2_lock:
@@ -113,6 +122,15 @@ class DiffSyncHandler:
                     if tt:
                         rel_path, remote_file, patch_file, local_content = tt
                         self.upload_and_apply_patch(rel_path, remote_file, patch_file, local_content) 
+                with unprocess_files_lck:
+                    try:
+                        unprocess_files_lst.remove(file_path)
+                    except BaseException as e:
+                        print(f"Exception:unprocess_files_lst.remove(file_path):{e.__class__}:{e}:'{file_path}'")
+                    if len(unprocess_files_lst) == 0:
+                        # Indicate that we've process the last file in the queue
+                        unprocess_files_evt.set()
+                    
         except KeyboardInterrupt:
             pass
             
@@ -333,7 +351,11 @@ class DiffSyncHandler:
             pass
         else:
             self._file_path_2_status[file_path] = mt
-            self._mp_queue.put(file_path)
+            with self.process_event_lck:
+                with self._unprocess_files_lck:
+                    self._unprocess_files_lst.append(file_path)
+                    self._unprocess_files_evt.clear()
+                self._mp_queue.put(file_path) # 2025_08_09_21_37
             
     @classmethod
     def start_monitoring(cls, diff_sync_handler, patterns_files_accept=None, patterns_files_ignore=None, is_pattern_glob_otherwise_regex=True):
@@ -369,7 +391,10 @@ class DiffSyncHandler:
             class _FileSystemEventHandlerWithOverriddenDispatchFunction(watchdog.events.FileSystemEventHandler):
                 def dispatch(self, event):
                     # Add the matched file to the queue
-                    diff_sync_handler._mp_queue.put(event.src_path)
+                    with diff_sync_handler.process_event_lck:
+                        diff_sync_handler._unprocess_files_lst.append(event.src_path)
+                        diff_sync_handler._unprocess_files_evt.clear()                    
+                    diff_sync_handler._mp_queue.put(event.src_path) # 2025_08_09_21_37
 
             klass = type("x_MatchingEventHandlerWithOverriddenParent", (x_MatchingEventHandler, _FileSystemEventHandlerWithOverriddenDispatchFunction), {})
             meh = klass(**kwargs)
