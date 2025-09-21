@@ -116,7 +116,9 @@ def visit_watchdog_matched_files(local_dir, cb_visit_matched_file, patterns_file
         
         for src_path in fast_scan(local_dir, cb_skip_directory=cb_skip_directory):
             obj = watchdog.events.FileCreatedEvent(src_path)
-            meh.dispatch(obj)            
+            meh.dispatch(obj)     
+            
+    return x_MatchingEventHandler, kwargs, Observer           
 
 class DiffSyncHandler:
     """Handles the creation, upload, and application of diff patches."""
@@ -281,15 +283,17 @@ class DiffSyncHandler:
             self.log_log(f"Downloading {self.FMTX} ..." % (remote_file,))
             import uuid, os
             temp_file = os.path.join(self.patch_dir, f"{uuid.uuid4().hex}.tmp")
+            ex = None
             try:  
                 self.sftp.get(remote_file, temp_file)
                 content = open(temp_file, "r", encoding="utf-8").readlines()   
-            except FileNotFoundError:
-                content = []
+            except FileNotFoundError as e:
+                ex = e
+                content = None
             finally:
                 if os.path.isfile(temp_file):
                     os.remove(temp_file)
-            self.log_log(f"Downloading {self.FMTX} Complete" % (remote_file, ))   
+            self.log_log(f"Downloading {self.FMTX} Complete%s" % (remote_file, "" if ex is None else f" {ex.__class__}:{ex}"))   
         return content
         
     def create_diff(self, file_path):
@@ -308,8 +312,9 @@ class DiffSyncHandler:
             if self.verbose: self.log_log(f"Queryg file {self.FMTX} ..." % (remote_file, ))
             stdin, stdout, stderr = self.ssh_client.exec_command(f"cksum {remote_file}")  
             stdout_s, stderr_s = stdout.read().decode(), stderr.read().decode()
-            if stderr_s.endswith("No such file or directory"):
-                remote_content = []  # No remote file exists, treat as empty 
+            if stderr_s.strip().endswith("No such file or directory"):
+                #remote_content = []  # No remote file exists, treat as empty 
+                return None
             else:
                 cksum_and_len = tuple(stdout_s.split(" ")[:2])   
                 remote_content = self._cache_get(remote_file, cksum_and_len)
@@ -377,22 +382,33 @@ class DiffSyncHandler:
                 self.log_log(f"Patchg file {self.FMTX} ..." % (remote_file,))                   
                 remote_patch = os.path.join(self.remote_dir, os.path.basename(patch_file)).replace('\\', '/')                         
                 try:
+                    if self.verbose: print("self.sftp.put BEG")
                     self.sftp.put(patch_file, remote_patch)
+                    if self.verbose: print("self.sftp.put END")
                 except BaseException as e:
                     print(f"ERROR:self.sftp.put(patch_file, remote_patch):'{patch_file}':'{remote_patch}'")
                     raise
                 
                 # Process the uploaded patch file
                 command = []
-                if self.use_gzipped_patch_files: command.append(f"gunzip -f {remote_patch}")
-                command.append(f"patch --binary -p0 < {remote_patch[:-3] if self.use_gzipped_patch_files else remote_patch}")
-                command.append(f" echo \"BEG_cksum\" ; echo `cksum {remote_file}`")
+                if self.use_gzipped_patch_files: command.append(f'gunzip -f "{remote_patch}"')
+                command.append(f'patch --binary -p0 < "{remote_patch[:-3] if self.use_gzipped_patch_files else remote_patch}"')
+                command.append(f' echo "BEG_cksum" ; echo `cksum "{remote_file}"`')
                 
                 while True:
-                    stdin, stdout, stderr = self.ssh_client.exec_command(';'.join(command))
-                    stdout_s, stderr_s = stdout.read().decode(), stderr.read().decode()
+                    cmd = ';'.join(command)
+                    if self.verbose: print(f"self.ssh_client.exec_command BEG {cmd}")
+                    stdin, stdout, stderr = self.ssh_client.exec_command(cmd)
+                    if self.verbose: print(f"self.ssh_client.exec_command RET {cmd}")
+                    stderr_s = stderr.read().decode()
+                    if self.verbose: print(stderr_s)
+                    stdout_s = stdout.read().decode()
+                    if self.verbose: print(stdout_s)                    
+                    if self.verbose: print(f"self.ssh_client.exec_command END {cmd}")
                     if stderr_s == '':
+                        # No errors ... exit loop
                         break
+                    
                     self.handle_failure_uaap(command, stderr_s) # We may be able to recover from errors at some point
                 
                 # Update the local cache
@@ -444,13 +460,14 @@ class DiffSyncHandler:
         """Starts monitoring local files and syncing diffs to the remote machine using the given instance diff_sync_handler."""
         
         def cb_visit_matched_file(event):
-            # Add the matched file to the queue
-            with diff_sync_handler.process_event_lck:
-                diff_sync_handler._unprocess_files_lst.append(event.src_path)
-                diff_sync_handler._unprocess_files_evt.clear()                    
-            diff_sync_handler._mp_queue.put(event.src_path) # 2025_08_09_21_37
+            if True:
+                # Add the matched file to the queue
+                with diff_sync_handler.process_event_lck:
+                    diff_sync_handler._unprocess_files_lst.append(event.src_path)
+                    diff_sync_handler._unprocess_files_evt.clear()                    
+                diff_sync_handler._mp_queue.put(event.src_path) # 2025_08_09_21_37
             
-        visit_watchdog_matched_files(diff_sync_handler.local_dir, cb_visit_matched_file, patterns_files_accept=patterns_files_accept, patterns_files_ignore=patterns_files_ignore, is_pattern_glob_otherwise_regex=is_pattern_glob_otherwise_regex, cb_skip_directory=cb_skip_directory)
+        x_MatchingEventHandler, kwargs, watchdog_observers_Observer = visit_watchdog_matched_files(diff_sync_handler.local_dir, cb_visit_matched_file, patterns_files_accept=patterns_files_accept, patterns_files_ignore=patterns_files_ignore, is_pattern_glob_otherwise_regex=is_pattern_glob_otherwise_regex, cb_skip_directory=cb_skip_directory)
         
         class MyEventHandler(x_MatchingEventHandler):
             """Forwards file events to DiffSyncHandler."""
@@ -469,7 +486,7 @@ class DiffSyncHandler:
                     self._diff_sync_handler.process_event(event.src_path)
                     
         def _f(_diff_sync_handler, _is_terminating, **kwargs):
-            observer = Observer()
+            observer = watchdog_observers_Observer()
             try:
                 observer.schedule(MyEventHandler(_diff_sync_handler, **kwargs), _diff_sync_handler.local_dir, recursive=True)
                 observer.start()
