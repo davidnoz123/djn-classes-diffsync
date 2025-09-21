@@ -314,7 +314,7 @@ class DiffSyncHandler:
             stdout_s, stderr_s = stdout.read().decode(), stderr.read().decode()
             if stderr_s.strip().endswith("No such file or directory"):
                 #remote_content = []  # No remote file exists, treat as empty 
-                return None
+                return None # (For now) Ignore files not on the server
             else:
                 cksum_and_len = tuple(stdout_s.split(" ")[:2])   
                 remote_content = self._cache_get(remote_file, cksum_and_len)
