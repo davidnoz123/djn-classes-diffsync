@@ -9,6 +9,13 @@ import runpy ; temp = runpy._run_module_as_main("__init__")
 """
 
 
+def format_exception(e):
+    import io, traceback
+    file = io.StringIO()
+    traceback.print_tb(e.__traceback__, file=file)
+    lf = "\n"
+    return f"{e.__class__}:{e}{lf}{file.getvalue()}"     
+
 def install_and_import(module_name, pip_name=None, user_install_otherwise_global=True, break_system_packages=False):
     """Attempts to import a module by string name and if it fails because there is no module by the name, then it attempts an install and another import."""
     import importlib, subprocess, sys, time
@@ -307,7 +314,11 @@ class DiffSyncHandler:
                 # Upload the patch file                   
                 self.log_log(f"Patchg file {self.FMTX} ..." % (remote_file,))                   
                 remote_patch = os.path.join(self.remote_dir, os.path.basename(patch_file)).replace('\\', '/')                         
-                self.sftp.put(patch_file, remote_patch)
+                try:
+                    self.sftp.put(patch_file, remote_patch)
+                except BaseException as e:
+                    print(f"ERROR:self.sftp.put(patch_file, remote_patch):'{patch_file}':'{remote_patch}'")
+                    raise
                 
                 # Process the uploaded patch file
                 command = []
