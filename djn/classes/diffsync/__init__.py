@@ -129,7 +129,7 @@ class DiffSyncHandler:
         
         import os
         # Get arg refs
-        self.get_ssh_client, self.local_dir, self.remote_dir, self.patch_dir, self.verbose, self.cb_log_callback = get_ssh_client, os.path.abspath(local_dir), remote_dir, os.path.abspath(patch_dir), verbose, cb_log_callback        
+        self.get_ssh_client, self.local_dir, self.remote_dir, self.patch_dir, self.cb_log_callback = get_ssh_client, os.path.abspath(local_dir), remote_dir, os.path.abspath(patch_dir), cb_log_callback        
         
         # Assign locals
         self.ssh_client, self.sftp, self._file_path_2_status, self._remote_file_2_data, self._log_prefix_s, self.cb_log_callback_f = None, None, None, None, None, None
@@ -161,6 +161,8 @@ class DiffSyncHandler:
         unprocess_files_lst, unprocess_files_lck, unprocess_files_evt = mp_manager.list(), mp_manager.Lock(), mp_manager.Event()
         
         mp_queue = multiprocessing.Queue()        
+        import ctypes 
+        self.__verbose = multiprocessing.Value(ctypes.c_bool, verbose)   # shared boolean
         
         _run_mp_queue_args = (mp_queue, mp_lock, remote_file_2_data, file_path_2_lock, file_path_2_lock_spare_locks, file_path_2_lock_spare_locks_pos, unprocess_files_lst, unprocess_files_lck, unprocess_files_evt) # 2025_08_09_21_45
         mp_pool = multiprocessing.Pool(mp_pool_size, self._run_mp_queue, _run_mp_queue_args)        
@@ -172,6 +174,18 @@ class DiffSyncHandler:
         self.process_event_lck = threading.Lock()
         
         self._file_path_2_status = dict() # The objects running self._run_mp_queue don't need this
+        
+    @property
+    def verbose(self):
+        """Getter"""
+        return self.__verbose.value
+
+    @verbose.setter
+    def verbose(self, value: bool):
+        """Setter"""
+        if not isinstance(value, bool):
+            raise ValueError("flag must be a boolean")
+        self.__verbose.value = value
          
     def _run_mp_queue(self, mp_queue, mp_lock, remote_file_2_data, file_path_2_lock, file_path_2_lock_spare_locks, file_path_2_lock_spare_locks_pos, unprocess_files_lst, unprocess_files_lck, unprocess_files_evt): # 2025_08_09_21_45
         self.mp_lock, self._remote_file_2_data = mp_lock, remote_file_2_data
